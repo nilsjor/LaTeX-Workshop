@@ -13213,6 +13213,9 @@ const PDFViewerApplication = {
   _saveInProgress: false,
   _wheelUnusedTicks: 0,
   _wheelUnusedFactor: 1,
+  // Accumulation state for edge-aware wheel-to-page navigation in PAGE scroll mode
+  _pageWheelTimeStamp: 0,
+  _pageWheelDelta: 0,
   _touchManager: null,
   _touchUnusedTicks: 0,
   _touchUnusedFactor: 1,
@@ -14844,6 +14847,51 @@ function onWheel(evt) {
         ticks = this._accumulateTicks(delta / PIXELS_PER_LINE_SCALE, "_wheelUnusedTicks");
       }
       this.updateZoom(ticks, null, origin);
+    }
+    return;
+  }
+  // Edge-aware wheel behavior for ScrollMode.PAGE: allow intra-page scroll, flip at edges
+  if (pdfViewer.scrollMode === ScrollMode.PAGE) {
+    const container = pdfViewer.container;
+    if (!container) {
+      return;
+    }
+    const delta = normalizeWheelEventDelta(evt);
+    if (delta === 0) {
+      return;
+    }
+    const goingUp = delta > 0;
+    const goingDown = delta < 0;
+    const atTop = container.scrollTop <= 0;
+    const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+
+    // If we can scroll within the page in the wheel direction, let the browser handle it.
+    if (goingDown && !atBottom || goingUp && !atTop) {
+      return;
+    }
+
+    // We're at an edge and the user keeps scrolling in that direction: intercept to flip pages.
+    evt.preventDefault();
+
+    const now = Date.now();
+    const last = this._pageWheelTimeStamp;
+    if (now > last && now - last < MOUSE_SCROLL_COOLDOWN_TIME) {
+      return;
+    }
+
+    // Reset accumulation if direction flips.
+    if (this._pageWheelDelta > 0 && delta < 0 || this._pageWheelDelta < 0 && delta > 0) {
+      this._pageWheelDelta = 0;
+    }
+    this._pageWheelDelta += delta;
+
+    if (Math.abs(this._pageWheelDelta) >= PAGE_SWITCH_THRESHOLD) {
+      const total = this._pageWheelDelta;
+      this._pageWheelDelta = 0;
+      const success = total > 0 ? pdfViewer.previousPage() : pdfViewer.nextPage();
+      if (success) {
+        this._pageWheelTimeStamp = now;
+      }
     }
   }
 }
