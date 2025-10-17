@@ -15057,6 +15057,9 @@ function onKeyDown(evt) {
   if (cmd === 0) {
     let turnPage = 0,
       turnOnlyIfPageFit = false;
+    // Track which axis to check for edge conditions
+    let considerVerticalEdge = false;
+    let considerHorizontalEdge = false;
     switch (evt.keyCode) {
       case 38:
         if (this.supportsCaretBrowsingMode) {
@@ -15064,7 +15067,9 @@ function onKeyDown(evt) {
           handled = true;
           break;
         }
+        considerVerticalEdge = true;
       case 33:
+        considerVerticalEdge = true;
         if (pdfViewer.isVerticalScrollbarEnabled) {
           turnOnlyIfPageFit = true;
         }
@@ -15083,6 +15088,7 @@ function onKeyDown(evt) {
         if (pdfViewer.isHorizontalScrollbarEnabled) {
           turnOnlyIfPageFit = true;
         }
+        considerHorizontalEdge = true;
       case 75:
       case 80:
         turnPage = -1;
@@ -15103,7 +15109,9 @@ function onKeyDown(evt) {
           handled = true;
           break;
         }
+        considerVerticalEdge = true;
       case 34:
+        considerVerticalEdge = true;
         if (pdfViewer.isVerticalScrollbarEnabled) {
           turnOnlyIfPageFit = true;
         }
@@ -15114,6 +15122,7 @@ function onKeyDown(evt) {
         if (!isViewerInPresentationMode) {
           turnOnlyIfPageFit = true;
         }
+        considerVerticalEdge = true;
         turnPage = 1;
         break;
       case 39:
@@ -15123,6 +15132,7 @@ function onKeyDown(evt) {
         if (pdfViewer.isHorizontalScrollbarEnabled) {
           turnOnlyIfPageFit = true;
         }
+        considerHorizontalEdge = true;
       case 74:
       case 78:
         turnPage = 1;
@@ -15153,6 +15163,26 @@ function onKeyDown(evt) {
       case 115:
         this.pdfSidebar?.toggle();
         break;
+    }
+    // In ScrollMode.PAGE, allow flipping when the viewport is at the edge in the key direction
+    if (turnPage !== 0 && pdfViewer.scrollMode === ScrollMode.PAGE) {
+      const c = pdfViewer.container;
+      if (c) {
+        let atEdgeDir = false;
+        if (considerVerticalEdge) {
+          const atTop = c.scrollTop <= 0;
+          const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 1;
+          atEdgeDir = turnPage < 0 ? atTop : atBottom;
+        } else if (considerHorizontalEdge) {
+          const atLeft = c.scrollLeft <= 0;
+          const atRight = c.scrollLeft + c.clientWidth >= c.scrollWidth - 1;
+          atEdgeDir = turnPage < 0 ? atLeft : atRight;
+        }
+        if (atEdgeDir) {
+          // Permit page flip even when not page-fit
+          turnOnlyIfPageFit = false;
+        }
+      }
     }
     if (turnPage !== 0 && (!turnOnlyIfPageFit || pdfViewer.currentScaleValue === "page-fit")) {
       if (turnPage > 0) {
